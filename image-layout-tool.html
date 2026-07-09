@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>图片批量排版工具</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+:root {
+  --radius-8:8px;--radius-12:12px;--radius-16:16px;--radius-full:999px;
+  --spacer-4:4px;--spacer-6:6px;--spacer-8:8px;--spacer-10:10px;
+  --spacer-12:12px;--spacer-16:16px;--spacer-20:20px;--spacer-32:32px;--spacer-64:64px;
+  --font-family-default:"SF Pro Text","PingFang SC",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --font-family-metric:"Inter","SF Pro Text","PingFang SC",system-ui,sans-serif;
+  --font-weight-default:400;--font-weight-medium:500;--font-weight-strong:600;
+  --body-base-font-size:14px;--body-base-line-height:20px;--body-base-strong-font-weight:500;
+  --body-sm-font-size:11px;
+  --bg-base-default:#FFFFFF;--bg-base-secondary:#F5F5F5;
+  --bg-overlay-l1:rgba(115,115,115,0.08);--bg-overlay-l2:rgba(115,115,115,0.12);
+  --bg-overlay-l3:rgba(115,115,115,0.16);
+  --bg-invert:#262626;--bg-invert-hover:#404040;
+  --bg-brand:#4B3FE3;--bg-brand-hover:#6A6FFF;
+  --brand-50:#F2F7FF;
+  --text-default:#171717;--text-secondary:#404040;--text-tertiary:#737373;--text-disabled:#A1A1A1;
+  --text-onbrand:#FFFFFF;--text-white:#FFFFFF;
+  --icon-default:#262626;--icon-secondary:#404040;--icon-tertiary:#737373;
+  --border-neutral-l1:rgba(115,115,115,0.12);--border-neutral-l2:rgba(115,115,115,0.18);
+  --border-neutral-l3:rgba(115,115,115,0.36);
+  --status-error-default:#E8463A;
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:var(--font-family-default);font-size:var(--body-base-font-size);line-height:var(--body-base-line-height);color:var(--text-default);background:var(--bg-base-secondary);overflow:hidden}
+
+.app{display:flex;height:100vh;overflow:hidden}
+.left-panel{width:40%;min-width:380px;display:flex;flex-direction:column;border-right:1px solid var(--border-neutral-l1);background:var(--bg-base-default);overflow:hidden}
+.right-panel{flex:1;display:flex;flex-direction:column;background:var(--bg-base-secondary);overflow:hidden}
+
+.section-header{display:flex;align-items:center;justify-content:space-between;padding:var(--spacer-16) var(--spacer-20);border-bottom:1px solid var(--border-neutral-l1);flex-shrink:0;height:48px}
+.section-title{font-size:var(--body-base-font-size);font-weight:600;color:var(--text-default);display:flex;align-items:center;gap:var(--spacer-8);white-space:nowrap}
+.section-badge{font-family:var(--font-family-metric);font-size:var(--body-sm-font-size);background:var(--bg-overlay-l2);color:var(--text-tertiary);padding:2px 8px;border-radius:var(--radius-full);font-weight:500}
+
+.upload-section{flex:0 0 auto;display:flex;flex-direction:column;border-bottom:1px solid var(--border-neutral-l1)}
+.drop-zone{margin:var(--spacer-12) var(--spacer-20);border:2px dashed var(--border-neutral-l2);border-radius:var(--radius-12);padding:var(--spacer-16) var(--spacer-20);text-align:center;cursor:pointer;transition:border-color .15s,background .15s;background:transparent}
+.drop-zone:hover,.drop-zone.drag-over{border-color:var(--bg-brand);background:var(--brand-50)}
+.drop-zone-icon{width:32px;height:32px;margin:0 auto var(--spacer-8);color:var(--icon-tertiary)}
+.drop-zone-text{font-size:var(--body-base-font-size);color:var(--text-default);margin-bottom:var(--spacer-2)}
+.drop-zone-hint{font-size:var(--body-sm-font-size);color:var(--text-tertiary)}
+.drop-zone-folder{display:inline-block;margin-top:var(--spacer-8);font-size:var(--body-sm-font-size);color:var(--bg-brand);cursor:pointer;border:0;background:none;padding:0;font:inherit;text-decoration:underline;text-underline-offset:2px}
+.drop-zone-folder:hover{color:var(--bg-brand-hover)}
+
+.thumb-list{max-height:200px;overflow-y:auto;padding:var(--spacer-8) var(--spacer-20);min-height:0;flex-shrink:0}
+.thumb-list::-webkit-scrollbar{width:4px}
+.thumb-list::-webkit-scrollbar-thumb{background:var(--bg-overlay-l3);border-radius:var(--radius-full)}
+.thumb-item{display:flex;align-items:center;gap:var(--spacer-8);padding:var(--spacer-4) var(--spacer-8);border-radius:var(--radius-8);transition:background .12s;position:relative}
+.thumb-item:hover{background:var(--bg-overlay-l1)}
+.thumb-item:hover .thumb-remove{opacity:1}
+.thumb-item img{width:32px;height:32px;border-radius:var(--radius-8);object-fit:cover;border:1px solid var(--border-neutral-l1);flex-shrink:0}
+.thumb-item-name{flex:1;font-size:var(--body-sm-font-size);color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.thumb-remove{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:18px;height:18px;border-radius:var(--radius-full);background:transparent;border:none;color:var(--icon-tertiary);font-size:11px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s}
+.thumb-remove:hover{background:var(--bg-overlay-l2);color:var(--status-error-default)}
+
+.config-section{flex:1;overflow-y:auto;min-height:0}
+.config-body{padding:var(--spacer-16) var(--spacer-20);display:flex;flex-direction:column;gap:var(--spacer-16)}
+.config-group{display:flex;flex-direction:column;gap:var(--spacer-8)}
+.config-label{font-size:var(--body-base-font-size);font-weight:500;color:var(--text-default)}
+.config-label-hint{font-size:var(--body-sm-font-size);color:var(--text-tertiary);font-weight:400;margin-left:var(--spacer-4)}
+
+.ctrl-select{width:100%;height:32px;padding:0 32px 0 var(--spacer-12);background:var(--bg-base-default);color:var(--text-default);border:1px solid var(--border-neutral-l1);border-radius:var(--radius-8);appearance:none;-webkit-appearance:none;font:inherit;font-size:var(--body-base-font-size);cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg width='16' height='16' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M4.5 6L8 9.5L11.5 6' stroke='%23737373' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center}
+.ctrl-select:focus{outline:none;border-color:#000}
+.ctrl-input-row{display:flex;gap:var(--spacer-8);align-items:center}
+.ctrl-input{flex:1;height:32px;padding:0 var(--spacer-12);background:var(--bg-base-default);border:1px solid var(--border-neutral-l1);border-radius:var(--radius-8);color:var(--text-default);font:inherit;font-size:var(--body-base-font-size);outline:none}
+.ctrl-input:focus{border-color:#000}
+.ctrl-input[type="number"]{appearance:textfield;-moz-appearance:textfield}
+.ctrl-input[type="number"]::-webkit-outer-spin-button,.ctrl-input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.ctrl-input-suffix{font-size:var(--body-sm-font-size);color:var(--text-tertiary);white-space:nowrap}
+.ctrl-color{width:32px;height:32px;padding:2px;border:1px solid var(--border-neutral-l1);border-radius:var(--radius-8);background:var(--bg-base-default);cursor:pointer}
+
+.lock-btn{width:32px;height:32px;border:1px solid var(--border-neutral-l1);border-radius:var(--radius-8);background:var(--bg-base-default);color:var(--icon-secondary);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .12s;flex-shrink:0}
+.lock-btn:hover{background:var(--bg-overlay-l2)}
+.lock-btn.locked{color:var(--bg-brand);border-color:var(--bg-brand)}
+
+.radio-group{display:flex;gap:var(--spacer-4);flex-wrap:wrap}
+.radio-btn{height:32px;padding:0 var(--spacer-12);border:1px solid var(--border-neutral-l1);border-radius:var(--radius-8);background:var(--bg-base-default);color:var(--text-secondary);font:inherit;font-size:var(--body-base-font-size);cursor:pointer;transition:all .12s;display:inline-flex;align-items:center;gap:var(--spacer-4)}
+.radio-btn:hover{background:var(--bg-overlay-l2)}
+.radio-btn.active{background:var(--bg-overlay-l3);border-color:var(--border-neutral-l3);color:var(--text-default);font-weight:500}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--spacer-6);height:28px;padding:0 var(--spacer-12);border-radius:var(--radius-8);border:1px solid transparent;cursor:pointer;user-select:none;white-space:nowrap;font-family:inherit;font-size:var(--body-base-font-size);font-weight:500;line-height:1;transition:all .12s}
+.btn--sm{height:24px;padding:0 var(--spacer-8);font-size:var(--body-sm-font-size)}
+.btn--ghost{background:transparent;color:var(--text-secondary);border-color:transparent}
+.btn--ghost:hover{background:var(--bg-overlay-l2);color:var(--text-default)}
+
+.margin-presets{display:flex;gap:var(--spacer-4);margin-bottom:var(--spacer-8)}
+.margin-preset-btn{height:28px;padding:0 var(--spacer-10);border:1px solid var(--border-neutral-l1);border-radius:var(--radius-8);background:var(--bg-base-default);color:var(--text-secondary);font:inherit;font-size:var(--body-sm-font-size);cursor:pointer;transition:all .12s}
+.margin-preset-btn:hover{background:var(--bg-overlay-l2)}
+.margin-preset-btn.active{background:var(--bg-overlay-l3);border-color:var(--border-neutral-l3);color:var(--text-default);font-weight:500}
+.margin-custom-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--spacer-8)}
+.margin-field{display:flex;align-items:center;gap:var(--spacer-4)}
+.margin-field-label{font-size:var(--body-sm-font-size);color:var(--text-tertiary);width:24px;flex-shrink:0}
+
+.size-mode-row{display:flex;flex-direction:column;gap:var(--spacer-8)}
+.size-mode-row-inner{display:flex;gap:var(--spacer-4)}
+.size-mode-info{font-size:var(--body-sm-font-size);color:var(--text-tertiary);margin-top:var(--spacer-4);line-height:1.4}
+.size-mode-btn{flex:1;height:28px;border:1px solid var(--border-neutral-l1);border-radius:var(--radius-8);background:var(--bg-base-default);color:var(--text-secondary);font:inherit;font-size:var(--body-sm-font-size);cursor:pointer;transition:all .12s}
+.size-mode-btn:hover{background:var(--bg-overlay-l2)}
+.size-mode-btn.active{background:var(--bg-overlay-l3);border-color:var(--border-neutral-l3);color:var(--text-default);font-weight:500}
+
+.col-stepper{display:inline-flex;align-items:center;border:1px solid var(--border-neutral-l1);border-radius:var(--radius-8);overflow:hidden;background:var(--bg-base-default)}
+.col-stepper button{width:32px;height:32px;border:0;background:transparent;color:var(--icon-secondary);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center}
+.col-stepper button:hover{background:var(--bg-overlay-l2);color:var(--icon-default)}
+.col-stepper button:disabled{opacity:.3;cursor:not-allowed}
+.col-stepper .col-value{width:40px;height:32px;border-left:1px solid var(--border-neutral-l1);border-right:1px solid var(--border-neutral-l1);display:flex;align-items:center;justify-content:center;font-family:var(--font-family-metric);font-size:var(--body-base-font-size);font-weight:500;color:var(--text-default)}
+
+.preview-header{display:flex;align-items:center;justify-content:space-between;padding:var(--spacer-16) var(--spacer-20);border-bottom:1px solid var(--border-neutral-l1);background:var(--bg-base-default);flex-shrink:0;gap:var(--spacer-8);height:48px}
+.preview-header-left{display:flex;align-items:center;gap:var(--spacer-12)}
+.preview-header-right{display:flex;align-items:center;gap:var(--spacer-8);flex-shrink:0}
+.export-btn{display:inline-flex;align-items:center;gap:var(--spacer-6);height:32px;padding:0 var(--spacer-16);border-radius:var(--radius-8);border:1px solid var(--border-neutral-l1);background:var(--bg-base-default);color:var(--text-default);font-family:inherit;font-size:var(--body-base-font-size);font-weight:500;cursor:pointer;transition:all .12s;white-space:nowrap}
+.export-btn:hover{background:var(--bg-overlay-l2);border-color:var(--border-neutral-l2)}
+.export-btn--primary{background:var(--bg-brand);color:var(--text-onbrand);border-color:var(--bg-brand)}
+.export-btn--primary:hover{background:var(--bg-brand-hover);border-color:var(--bg-brand-hover)}
+.export-btn svg{width:16px;height:16px}
+
+.preview-scroll{flex:1;overflow:auto;padding:var(--spacer-32);display:flex;justify-content:center;align-items:flex-start;min-height:0}
+
+.zoom-controls{display:flex;align-items:center;gap:var(--spacer-4)}
+.zoom-btn{width:28px;height:28px;border:1px solid var(--border-neutral-l1);border-radius:var(--radius-8);background:var(--bg-base-default);color:var(--icon-secondary);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;transition:all .12s}
+.zoom-btn:hover{background:var(--bg-overlay-l2);color:var(--icon-default)}
+.zoom-value{font-family:var(--font-family-metric);font-size:var(--body-sm-font-size);color:var(--text-tertiary);min-width:44px;text-align:center}
+
+.page-canvas{background:white;box-shadow:0 2px 16px rgba(0,0,0,.08),0 0 0 1px rgba(0,0,0,.04);position:relative;flex-shrink:0;overflow:visible}
+
+.row-wrap{display:flex;flex-direction:column;position:relative}
+.grid-row{display:flex;align-items:stretch}
+.grid-item{overflow:hidden;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.grid-item img{display:block}
+
+.col-guide{position:absolute;top:0;bottom:0;width:0;border-left:1px dashed rgba(0,0,0,.10);pointer-events:none;z-index:1}
+.row-guide{position:absolute;left:0;right:0;height:0;border-top:1px dashed rgba(0,0,0,.10);pointer-events:none;z-index:1}
+
+.preview-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:var(--spacer-64) var(--spacer-32);color:var(--text-tertiary);text-align:center}
+.preview-empty-icon{width:64px;height:64px;color:var(--border-neutral-l2);margin-bottom:var(--spacer-16)}
+.preview-empty-text{font-size:var(--body-base-font-size);color:var(--text-secondary);margin-bottom:var(--spacer-4)}
+.preview-empty-hint{font-size:var(--body-sm-font-size);color:var(--text-tertiary)}
+
+.toggle-wrap{display:flex;align-items:center;gap:var(--spacer-8);font-size:var(--body-sm-font-size);color:var(--text-secondary)}
+.toggle-switch{position:relative;display:inline-flex;width:32px;height:18px;background:var(--bg-overlay-l3);border:1px solid var(--border-neutral-l1);border-radius:var(--radius-full);cursor:pointer;transition:all .15s}
+.toggle-switch.on{background:var(--bg-brand);border-color:var(--bg-brand)}
+.toggle-switch::after{content:'';position:absolute;top:2px;left:2px;width:12px;height:12px;background:var(--bg-base-default);border-radius:var(--radius-full);transition:left .15s}
+.toggle-switch.on::after{left:16px;background:var(--text-onbrand)}
+
+.loading-overlay{position:fixed;inset:0;background:rgba(255,255,255,.7);display:flex;align-items:center;justify-content:center;z-index:1000;backdrop-filter:blur(4px)}
+.loading-spinner{width:32px;height:32px;border:3px solid var(--bg-overlay-l3);border-top-color:var(--bg-brand);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:10px 20px;background:var(--bg-invert);color:var(--text-white);border-radius:var(--radius-8);font-size:var(--body-base-font-size);box-shadow:0 8px 24px rgba(0,0,0,.15);z-index:2000;animation:toastIn .3s ease}
+@keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(12px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+
+@media(max-width:900px){
+  .app{flex-direction:column}
+  .left-panel{width:100%;min-width:0;max-width:none;max-height:50vh;border-right:none;border-bottom:1px solid var(--border-neutral-l1)}
+  .right-panel{flex:1}
+  .preview-scroll{padding:var(--spacer-16)}
+}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--bg-overlay-l3);border-radius:var(--radius-full)}
+::-webkit-scrollbar-thumb:hover{background:var(--border-neutral-l3)}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="left-panel">
+    <div class="upload-section">
+      <div class="section-header">
+        <div class="section-title">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="currentColor" stroke-width="1.3"/><path d="M5 7l3 3 3-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          文件上传
+          <span class="section-badge" id="fileCount">0 张</span>
+        </div>
+        <button class="btn btn--sm btn--ghost" id="clearAllBtn" style="display:none" onclick="clearAll()">清空全部</button>
+      </div>
+      <div class="drop-zone" id="dropZone">
+        <svg class="drop-zone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <div class="drop-zone-text">拖拽图片到此处，或点击选择</div>
+        <div class="drop-zone-hint">支持 JPG、PNG、GIF、WebP，可多选</div>
+        <input type="file" id="fileInput" multiple accept="image/*" style="display:none">
+      </div>
+      <!-- Folder input OUTSIDE drop-zone, triggered by label -->
+      <div style="text-align:center;padding:0 var(--spacer-20) var(--spacer-12)">
+        <label class="drop-zone-folder" for="folderInput">或选择文件夹导入</label>
+        <input type="file" id="folderInput" webkitdirectory multiple accept="image/*" style="display:none">
+      </div>
+      <div class="thumb-list" id="thumbList"></div>
+    </div>
+
+    <div class="config-section">
+      <div class="section-header">
+        <div class="section-title">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          参数配置
+        </div>
+      </div>
+      <div class="config-body">
+        <div class="config-group">
+          <div class="config-label">预览页面尺寸</div>
+          <select class="ctrl-select" id="pageSize" onchange="onPageSizeChange()">
+            <option value="A3">A3 (297 x 420 mm)</option>
+            <option value="A4" selected>A4 (210 x 297 mm)</option>
+            <option value="A5">A5 (148 x 210 mm)</option>
+            <option value="B5">B5 (176 x 250 mm)</option>
+          </select>
+        </div>
+        <div class="config-group">
+          <div class="config-label">页边距</div>
+          <div class="margin-presets">
+            <button class="margin-preset-btn" data-preset="narrow" onclick="setMarginPreset('narrow')">窄 (1cm)</button>
+            <button class="margin-preset-btn active" data-preset="normal" onclick="setMarginPreset('normal')">常规 (2cm)</button>
+            <button class="margin-preset-btn" data-preset="wide" onclick="setMarginPreset('wide')">宽 (3cm)</button>
+            <button class="margin-preset-btn" data-preset="custom" onclick="setMarginPreset('custom')">自定义</button>
+          </div>
+          <div class="margin-custom-grid" id="marginCustom" style="display:none">
+            <div class="margin-field"><span class="margin-field-label">上</span><input class="ctrl-input" type="number" id="marginTop" value="20" min="0" onchange="renderPreview()"><span class="ctrl-input-suffix">mm</span></div>
+            <div class="margin-field"><span class="margin-field-label">下</span><input class="ctrl-input" type="number" id="marginBottom" value="20" min="0" onchange="renderPreview()"><span class="ctrl-input-suffix">mm</span></div>
+            <div class="margin-field"><span class="margin-field-label">左</span><input class="ctrl-input" type="number" id="marginLeft" value="20" min="0" onchange="renderPreview()"><span class="ctrl-input-suffix">mm</span></div>
+            <div class="margin-field"><span class="margin-field-label">右</span><input class="ctrl-input" type="number" id="marginRight" value="20" min="0" onchange="renderPreview()"><span class="ctrl-input-suffix">mm</span></div>
+          </div>
+        </div>
+        <div class="config-group">
+          <div class="config-label">图片尺寸</div>
+          <!-- Row 1: 原始尺寸 -->
+          <div style="margin-bottom:var(--spacer-8)">
+            <button class="size-mode-btn active" data-mode="original" onclick="setSizeMode('original')" style="width:100%">原始尺寸</button>
+            <div class="size-mode-info" id="originalSizeInfo">上传图片后显示原始尺寸</div>
+          </div>
+          <!-- Row 2: 自定义尺寸 -->
+          <div style="margin-bottom:var(--spacer-8)">
+            <button class="size-mode-btn" data-mode="custom" onclick="setSizeMode('custom')" style="width:100%">自定义尺寸</button>
+            <div id="imageSizeCustom" style="display:none;margin-top:var(--spacer-8)">
+              <div class="ctrl-input-row">
+                <span class="ctrl-input-suffix">宽</span>
+                <input class="ctrl-input" type="number" id="imgWidth" value="50" min="1" onchange="onImgSizeChange('w')">
+                <span class="ctrl-input-suffix">mm</span>
+                <button class="lock-btn" id="lockBtn" onclick="toggleLock()" title="锁定：保留原始比例缩放；不锁定：严格按输入尺寸">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="3" y="7" width="10" height="7" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+                </button>
+                <span class="ctrl-input-suffix">高</span>
+                <input class="ctrl-input" type="number" id="imgHeight" value="50" min="1" onchange="onImgSizeChange('h')">
+                <span class="ctrl-input-suffix">mm</span>
+              </div>
+              <div class="size-mode-info" id="lockHint">未锁定：严格按输入宽高展示</div>
+            </div>
+          </div>
+        </div>
+        <div class="config-group">
+          <div class="config-label">图片间距</div>
+          <div class="toggle-wrap" style="margin-bottom:var(--spacer-8)">
+            <div class="toggle-switch on" id="autoLayoutToggle" onclick="toggleAutoLayout()"></div>
+            <span>自动排列</span>
+          </div>
+          <div id="autoLayoutOptions" style="margin-bottom:var(--spacer-8)">
+            <div class="size-mode-info" id="autoLayoutHint">固定列数，水平间距由列数自动计算</div>
+            <div style="display:flex;align-items:center;gap:var(--spacer-8);margin-top:var(--spacer-8)">
+              <div class="col-stepper">
+                <button id="colMinus" onclick="changeCol(-1)">−</button>
+                <div class="col-value" id="colValue">3</div>
+                <button id="colPlus" onclick="changeCol(1)">+</button>
+              </div>
+              <span style="font-size:var(--body-sm-font-size);color:var(--text-tertiary)">列</span>
+            </div>
+          </div>
+          <div id="manualGapOptions" style="display:none">
+            <div class="ctrl-input-row">
+              <span class="ctrl-input-suffix">水平</span><input class="ctrl-input" type="number" id="gapH" value="2" min="0" step="0.5" onchange="renderPreview()"><span class="ctrl-input-suffix">mm</span>
+              <span class="ctrl-input-suffix">垂直</span><input class="ctrl-input" type="number" id="gapV" value="2" min="0" step="0.5" onchange="renderPreview()"><span class="ctrl-input-suffix">mm</span>
+            </div>
+            <div class="size-mode-info" id="manualGapHint">图片按指定间距连续排列</div>
+          </div>
+        </div>
+        <div class="config-group">
+          <div class="config-label">对齐方式</div>
+          <div class="radio-group">
+            <button class="radio-btn" data-align="left" onclick="setAlign('left')">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><line x1="2" y1="4" x2="14" y2="4" stroke="currentColor" stroke-width="1.3"/><line x1="2" y1="8" x2="10" y2="8" stroke="currentColor" stroke-width="1.3"/><line x1="2" y1="12" x2="6" y2="12" stroke="currentColor" stroke-width="1.3"/></svg>
+              左对齐
+            </button>
+            <button class="radio-btn active" data-align="center" onclick="setAlign('center')">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><line x1="2" y1="4" x2="14" y2="4" stroke="currentColor" stroke-width="1.3"/><line x1="3" y1="8" x2="13" y2="8" stroke="currentColor" stroke-width="1.3"/><line x1="5" y1="12" x2="11" y2="12" stroke="currentColor" stroke-width="1.3"/></svg>
+              居中
+            </button>
+            <button class="radio-btn" data-align="right" onclick="setAlign('right')">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><line x1="2" y1="4" x2="14" y2="4" stroke="currentColor" stroke-width="1.3"/><line x1="6" y1="8" x2="14" y2="8" stroke="currentColor" stroke-width="1.3"/><line x1="10" y1="12" x2="14" y2="12" stroke="currentColor" stroke-width="1.3"/></svg>
+              右对齐
+            </button>
+            <button class="radio-btn" data-align="justify" onclick="setAlign('justify')">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><line x1="2" y1="4" x2="14" y2="4" stroke="currentColor" stroke-width="1.3"/><line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" stroke-width="1.3"/><line x1="2" y1="12" x2="14" y2="12" stroke="currentColor" stroke-width="1.3"/></svg>
+              两端
+            </button>
+          </div>
+        </div>
+        <div class="config-group">
+          <div class="config-label">图片边框</div>
+          <div class="toggle-wrap" style="margin-bottom:var(--spacer-8)">
+            <div class="toggle-switch" id="borderToggle" onclick="toggleBorder()"></div>
+            <span>启用边框</span>
+          </div>
+          <div id="borderConfig" style="display:none">
+            <div class="ctrl-input-row" style="margin-bottom:var(--spacer-8)">
+              <span class="ctrl-input-suffix">内间距</span><input class="ctrl-input" type="number" id="borderPadding" value="2" min="0" step="0.5" onchange="renderPreview()"><span class="ctrl-input-suffix">mm</span>
+              <span class="ctrl-input-suffix">粗细</span><input class="ctrl-input" type="number" id="borderWidth" value="0.5" min="0" step="0.1" onchange="renderPreview()"><span class="ctrl-input-suffix">mm</span>
+            </div>
+            <div class="ctrl-input-row" style="margin-bottom:var(--spacer-8)">
+              <span class="ctrl-input-suffix">颜色</span>
+              <input class="ctrl-color" type="color" id="borderColor" value="#333333" onchange="renderPreview()">
+            </div>
+            <div class="config-label" style="font-size:var(--body-sm-font-size)">边框样式</div>
+            <div class="radio-group">
+              <button class="radio-btn active" data-bstyle="solid" onclick="setBorderStyle('solid')">实线</button>
+              <button class="radio-btn" data-bstyle="dashed" onclick="setBorderStyle('dashed')">虚线</button>
+              <button class="radio-btn" data-bstyle="dotted" onclick="setBorderStyle('dotted')">点线</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="right-panel">
+    <div class="preview-header">
+      <div class="preview-header-left">
+        <div class="section-title">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 3.5A1.5 1.5 0 013.5 2h9A1.5 1.5 0 0114 3.5v9a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 12.5v-9z" stroke="currentColor" stroke-width="1.3"/><circle cx="6" cy="6" r="1.5" stroke="currentColor" stroke-width="1.1"/><path d="M2 11l3.5-3.5 2.5 2.5L11 6.5l3 3.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          实时预览
+        </div>
+        <div class="toggle-wrap">
+          <div class="toggle-switch" id="guideToggle" onclick="toggleGuide()"></div>
+          <span>分栏虚线</span>
+        </div>
+      </div>
+      <div class="preview-header-right">
+        <div class="zoom-controls">
+          <button class="zoom-btn" onclick="changeZoom(-0.1)" title="缩小">−</button>
+          <span class="zoom-value" id="zoomValue">100%</span>
+          <button class="zoom-btn" onclick="changeZoom(0.1)" title="放大">+</button>
+          <button class="zoom-btn" onclick="resetZoom()" title="适应窗口" style="font-size:11px;margin-left:2px">适应</button>
+        </div>
+        <button class="export-btn" onclick="exportPDF()">
+          <svg viewBox="0 0 16 16" fill="none"><path d="M8 2v8m0 0l-3-3m3 3l3-3M3 12v1.5A.5.5 0 003.5 14h9a.5.5 0 00.5-.5V12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          PDF
+        </button>
+        <button class="export-btn export-btn--primary" onclick="exportImage()">
+          <svg viewBox="0 0 16 16" fill="none"><path d="M8 2v8m0 0l-3-3m3 3l3-3M3 12v1.5A.5.5 0 003.5 14h9a.5.5 0 00.5-.5V12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          长图
+        </button>
+      </div>
+    </div>
+    <div class="preview-scroll" id="previewScroll">
+      <div id="previewContent"></div>
+    </div>
+  </div>
+</div>
+
+<div class="loading-overlay" id="loadingOverlay" style="display:none"><div class="loading-spinner"></div></div>
+
+<script>
+/* ═══════════════════════════════════════
+   图片批量排版工具 v3.3
+   ═══════════════════════════════════════ */
+
+// ── State ──
+let images = [];
+let idCounter = 0;
+let columns = 3;
+let autoLayout = true; // true = 固定列数自动排列, false = 手动间距连续排列
+let alignment = 'center';
+let showGuide = false;
+let aspectLocked = false;
+let aspectRatio = 1;
+let sizeMode = 'original';
+let zoomLevel = 1;
+let fitZoom = 1;
+let borderEnabled = false;
+let borderStyle = 'solid';
+
+const PAGE_SIZES = {
+  A3: { w: 297, h: 420 }, A4: { w: 210, h: 297 },
+  A5: { w: 148, h: 210 }, B5: { w: 176, h: 250 },
+};
+const MARGIN_PRESETS = {
+  narrow: { top: 10, bottom: 10, left: 10, right: 10 },
+  normal: { top: 20, bottom: 20, left: 20, right: 20 },
+  wide:   { top: 30, bottom: 30, left: 30, right: 30 },
+};
+
+const $ = id => document.getElementById(id);
+
+// ── Upload: file select ──
+$('dropZone').addEventListener('click', e => {
+  // Don't trigger file input if clicking on the folder label area or nested inputs
+  if (e.target.closest('label') || e.target.closest('input')) return;
+  $('fileInput').click();
+});
+$('fileInput').addEventListener('change', e => handleFiles(e.target.files));
+
+// ── Upload: folder select (label + for attribute, no JS needed for click) ──
+$('folderInput').addEventListener('change', e => handleFiles(e.target.files));
+
+// ── Drag & drop ──
+const dropZone = $('dropZone');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  handleFiles([...e.dataTransfer.files].filter(f => f.type.startsWith('image/')));
+});
+
+function handleFiles(fileList) {
+  [...fileList].filter(f => f.type.startsWith('image/')).forEach(file => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      // Convert to dataUrl immediately — blob URLs fail with html2canvas
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      c.getContext('2d').drawImage(img, 0, 0);
+      const dataUrl = c.toDataURL('image/png');
+      URL.revokeObjectURL(url); // free blob memory
+      images.push({
+        id: ++idCounter, file, dataUrl, name: file.name,
+        naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight,
+      });
+      updateThumbs();
+      updateOriginalSizeInfo();
+      renderPreview();
+    };
+    img.onerror = () => URL.revokeObjectURL(url);
+    img.src = url;
+  });
+  $('fileInput').value = '';
+  $('folderInput').value = '';
+}
+
+function updateThumbs() {
+  $('fileCount').textContent = images.length + ' 张';
+  $('clearAllBtn').style.display = images.length ? '' : 'none';
+  const list = $('thumbList');
+  list.innerHTML = '';
+  images.forEach(item => {
+    const div = document.createElement('div');
+    div.className = 'thumb-item';
+    const name = item.name.replace(/\.[^.]+$/, '');
+    div.innerHTML = '<img src="' + item.dataUrl + '" alt=""><span class="thumb-item-name" title="' + item.name + '">' + name + '</span><button class="thumb-remove" data-id="' + item.id + '" title="删除">✕</button>';
+    div.querySelector('.thumb-remove').addEventListener('click', function() {
+      removeImage(parseInt(this.dataset.id));
+    });
+    list.appendChild(div);
+  });
+}
+function removeImage(id) {
+  const idx = images.findIndex(i => i.id === id);
+  if (idx !== -1) { images.splice(idx, 1); updateThumbs(); renderPreview(); }
+}
+function clearAll() { images = []; updateThumbs(); updateOriginalSizeInfo(); renderPreview(); }
+
+// Update original size info text
+function updateOriginalSizeInfo() {
+  const el = $('originalSizeInfo');
+  if (!el) return;
+  if (!images.length) { el.textContent = '上传图片后显示原始尺寸'; return; }
+  // Use first image's dimensions as reference
+  const img = images[0];
+  const wMM = (img.naturalWidth / 96 * 25.4).toFixed(1);
+  const hMM = (img.naturalHeight / 96 * 25.4).toFixed(1);
+  el.textContent = '原始尺寸：' + img.naturalWidth + ' x ' + img.naturalHeight + ' px（约 ' + wMM + ' x ' + hMM + ' mm @96dpi）';
+  if (images.length > 1) {
+    // Check if all images have same dimensions
+    const same = images.every(i => i.naturalWidth === img.naturalWidth && i.naturalHeight === img.naturalHeight);
+    if (!same) el.textContent += '，图片尺寸不一致';
+  }
+}
+// Update lock hint text
+function updateLockHint() {
+  const el = $('lockHint');
+  if (!el) return;
+  if (aspectLocked) {
+    el.textContent = '已锁定：保留图片原始比例，按宽度缩放';
+  } else {
+    el.textContent = '未锁定：严格按输入宽高展示';
+  }
+}
+
+// ── Config ──
+function setMarginPreset(preset) {
+  document.querySelectorAll('.margin-preset-btn').forEach(b => b.classList.toggle('active', b.dataset.preset === preset));
+  $('marginCustom').style.display = preset === 'custom' ? '' : 'none';
+  if (preset !== 'custom') {
+    const m = MARGIN_PRESETS[preset];
+    $('marginTop').value = m.top; $('marginBottom').value = m.bottom;
+    $('marginLeft').value = m.left; $('marginRight').value = m.right;
+  }
+  renderPreview();
+}
+function setSizeMode(mode) {
+  sizeMode = mode;
+  document.querySelectorAll('.size-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  $('imageSizeCustom').style.display = mode === 'custom' ? '' : 'none';
+  updateOriginalSizeInfo();
+  updateLockHint();
+  renderPreview();
+}
+function toggleLock() {
+  aspectLocked = !aspectLocked;
+  $('lockBtn').classList.toggle('locked', aspectLocked);
+  // When locking: calculate aspect ratio from first uploaded image
+  if (aspectLocked && images.length > 0) {
+    const img = images[0];
+    aspectRatio = img.naturalWidth / img.naturalHeight;
+    // Auto-fill height based on current width
+    const w = parseFloat($('imgWidth').value) || 50;
+    $('imgHeight').value = Math.round(w / aspectRatio);
+  }
+  updateLockHint();
+  renderPreview();
+}
+function onImgSizeChange(dim) {
+  const wIn = $('imgWidth'), hIn = $('imgHeight');
+  if (dim === 'w') {
+    const w = parseFloat(wIn.value) || 1;
+    if (aspectLocked) { hIn.value = Math.round(w / aspectRatio); }
+  } else {
+    const h = parseFloat(hIn.value) || 1;
+    if (aspectLocked) { wIn.value = Math.round(h * aspectRatio); }
+  }
+  renderPreview();
+}
+function toggleAutoLayout() {
+  autoLayout = !autoLayout;
+  $('autoLayoutToggle').classList.toggle('on', autoLayout);
+  $('autoLayoutOptions').style.display = autoLayout ? '' : 'none';
+  $('manualGapOptions').style.display = autoLayout ? 'none' : '';
+  renderPreview();
+}
+function changeCol(d) {
+  columns = Math.max(1, Math.min(6, columns + d));
+  $('colValue').textContent = columns;
+  $('colMinus').disabled = columns <= 1;
+  $('colPlus').disabled = columns >= 6;
+  renderPreview();
+}
+function setAlign(a) {
+  alignment = a;
+  document.querySelectorAll('.radio-btn[data-align]').forEach(b => b.classList.toggle('active', b.dataset.align === a));
+  renderPreview();
+}
+function toggleGuide() { showGuide = !showGuide; $('guideToggle').classList.toggle('on', showGuide); renderPreview(); }
+function toggleBorder() { borderEnabled = !borderEnabled; $('borderToggle').classList.toggle('on', borderEnabled); $('borderConfig').style.display = borderEnabled ? '' : 'none'; renderPreview(); }
+function setBorderStyle(s) { borderStyle = s; document.querySelectorAll('.radio-btn[data-bstyle]').forEach(b => b.classList.toggle('active', b.dataset.bstyle === s)); renderPreview(); }
+function onPageSizeChange() { calcFitZoom(); zoomLevel = fitZoom; $('zoomValue').textContent = '100%'; renderPreview(); }
+
+// ── Zoom ──
+function calcFitZoom() {
+  const ps = PAGE_SIZES[$('pageSize').value];
+  const scrollW = $('previewScroll').clientWidth - 64;
+  fitZoom = Math.max(0.1, scrollW / ps.w);
+}
+function changeZoom(delta) {
+  const newZoom = zoomLevel + delta;
+  // Max zoom = 1000% of fitZoom
+  zoomLevel = Math.max(fitZoom * 0.5, Math.min(fitZoom * 10, newZoom));
+  $('zoomValue').textContent = Math.round(zoomLevel / fitZoom * 100) + '%';
+  renderPreview();
+}
+function resetZoom() {
+  calcFitZoom();
+  zoomLevel = fitZoom;
+  $('zoomValue').textContent = '100%';
+  renderPreview();
+}
+
+// ── Helpers ──
+function getMargins() {
+  return {
+    top: parseFloat($('marginTop').value) || 0,
+    bottom: parseFloat($('marginBottom').value) || 0,
+    left: parseFloat($('marginLeft').value) || 0,
+    right: parseFloat($('marginRight').value) || 0,
+  };
+}
+function getBorder() {
+  if (!borderEnabled) return null;
+  return {
+    padding: parseFloat($('borderPadding').value) || 0,
+    width: parseFloat($('borderWidth').value) || 0.5,
+    color: $('borderColor').value || '#333333',
+    style: borderStyle,
+  };
+}
+
+// Compute image size in mm, accounting for border padding + width
+function getImageSize(img, cellW) {
+  const b = getBorder();
+  const overhead = b ? (b.padding + b.width) * 2 : 0;
+  const effectiveW = Math.max(cellW - overhead, 1);
+  const imgAspect = img.naturalWidth / img.naturalHeight;
+
+  if (sizeMode === 'original') {
+    return { w: effectiveW, h: effectiveW / imgAspect };
+  }
+  const cw = parseFloat($('imgWidth').value) || 50;
+  const ch = parseFloat($('imgHeight').value) || 50;
+  if (aspectLocked) {
+    // Locked: use image's original aspect ratio, scale to fit within input width
+    const w = Math.min(cw, effectiveW);
+    return { w, h: w / imgAspect };
+  }
+  // Unlocked: strictly use input width and height
+  return { w: Math.min(cw, effectiveW), h: ch };
+}
+
+// Cell total height = image height + border overhead
+function getCellHeight(imgH) {
+  const b = getBorder();
+  return b ? imgH + (b.padding + b.width) * 2 : imgH;
+}
+
+// ── Build shared layout data ──
+function buildLayout() {
+  const ps = PAGE_SIZES[$('pageSize').value];
+  const m = getMargins();
+  const gapV = parseFloat($('gapV').value) || 0;
+  const contentW = ps.w - m.left - m.right;
+
+  if (autoLayout) {
+    // Auto layout: fixed columns, gap auto-calculated
+    const gapH = 0; // not used in cell calc for auto mode; gap applied via row flex
+    const cellW = contentW / columns;
+
+    const rows = [];
+    let cur = [];
+    images.forEach((img, i) => {
+      const size = getImageSize(img, cellW);
+      cur.push({ img, size });
+      if (cur.length === columns || i === images.length - 1) {
+        const maxImgH = Math.max(...cur.map(r => r.size.h));
+        rows.push({ items: cur, maxImgH, cellH: getCellHeight(maxImgH) });
+        cur = [];
+      }
+    });
+    return { ps, m, gapH: 0, gapV, cellW, rows };
+  } else {
+    // Manual gap: images placed sequentially with specified horizontal/vertical gap
+    const gapH = parseFloat($('gapH').value) || 0;
+    const rows = [];
+    let cur = [];
+    let curRowWidth = 0;
+
+    images.forEach((img, i) => {
+      const size = getImageSize(img, contentW); // cellW = full content width for manual mode
+      const itemW = size.w + (cur.length > 0 ? gapH : 0);
+
+      if (cur.length > 0 && curRowWidth + itemW > contentW + 0.01) {
+        // Doesn't fit, start new row
+        const maxImgH = Math.max(...cur.map(r => r.size.h));
+        rows.push({ items: cur, maxImgH, cellH: getCellHeight(maxImgH) });
+        cur = [];
+        curRowWidth = 0;
+      }
+      cur.push({ img, size });
+      curRowWidth += size.w + (cur.length > 1 ? gapH : 0);
+
+      if (i === images.length - 1) {
+        const maxImgH = Math.max(...cur.map(r => r.size.h));
+        rows.push({ items: cur, maxImgH, cellH: getCellHeight(maxImgH) });
+      }
+    });
+    return { ps, m, gapH, gapV, cellW: contentW, rows };
+  }
+}
+
+// Get row alignment CSS
+function getRowAlignCSS(isLastRow, numItems) {
+  if (alignment === 'justify') {
+    // space-between: items spread to fill width (gap: 0)
+    return 'display:flex;gap:0px;justify-content:space-between;';
+  }
+  const jc = alignment === 'left' ? 'flex-start' : alignment === 'right' ? 'flex-end' : 'center';
+  return 'display:flex;justify-content:' + jc + ';';
+}
+
+// ── Render preview (HTML string) ──
+function renderPreview() {
+  const el = $('previewContent');
+  if (!images.length) {
+    el.innerHTML = '<div class="preview-empty"><svg class="preview-empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg><div class="preview-empty-text">上传图片后即可预览排版效果</div><div class="preview-empty-hint">支持拖拽上传或点击左侧区域选择文件</div></div>';
+    return;
+  }
+
+  const { ps, m, gapH, gapV, cellW, rows } = buildLayout();
+  const z = zoomLevel;
+  const gapVPx = gapV * z;
+  const cellPx = cellW * z;
+
+  const totalH = rows.reduce((s, r) => s + r.cellH, 0) + gapV * (rows.length - 1);
+  const dW = ps.w * z;
+  const dH = Math.max(ps.h * z, (totalH + m.top + m.bottom) * z);
+
+  let h = '<div class="page-canvas" id="pageCanvas" style="width:' + dW.toFixed(1) + 'px;min-height:' + dH.toFixed(1) + 'px;padding:' + (m.top*z) + 'px ' + (m.right*z) + 'px ' + (m.bottom*z) + 'px ' + (m.left*z) + 'px">';
+
+  // ── Guides ──
+  if (showGuide && autoLayout) {
+    const baseLeft = m.left * z;
+    // Column guides (only in auto mode)
+    for (let c = 1; c < columns; c++) {
+      const x = baseLeft + cellPx * c;
+      h += '<div class="col-guide" style="left:' + x.toFixed(1) + 'px"></div>';
+    }
+    // Row guides
+    let y = m.top * z;
+    rows.forEach((row, ri) => {
+      y += row.cellH * z;
+      if (ri < rows.length - 1) { y += gapVPx; h += '<div class="row-guide" style="top:' + (y - gapVPx / 2).toFixed(1) + 'px"></div>'; }
+    });
+  }
+
+  // ── Rows (flex layout) ──
+  h += '<div class="row-wrap">';
+  rows.forEach((row, ri) => {
+    const rowHpx = row.cellH * z;
+    const isLast = ri === rows.length - 1;
+    if (autoLayout) {
+      // Auto mode: fixed column width, alignment on incomplete rows
+      const isIncomplete = isLast && row.items.length < columns;
+      const useAlignment = isIncomplete || alignment === 'justify';
+      const rowCSS = useAlignment ? getRowAlignCSS(isLast, row.items.length) : 'display:flex;gap:0px;';
+      h += '<div class="grid-row" style="height:' + rowHpx.toFixed(1) + 'px;' + rowCSS + '">';
+      row.items.forEach(({ img, size }) => {
+        const imgWpx = size.w * z;
+        const imgHpx = size.h * z;
+        let borderCSS = '';
+        const b = getBorder();
+        if (b) {
+          const bp = b.padding * z;
+          const bw = Math.max(b.width * z, 0.5);
+          borderCSS = 'padding:' + bp.toFixed(1) + 'px;background:white;border:' + bw.toFixed(1) + 'px ' + b.style + ' ' + b.color + ';';
+        }
+        h += '<div class="grid-item" style="width:' + cellPx.toFixed(1) + 'px;' + borderCSS + '">';
+        h += '<img src="' + img.dataUrl + '" style="width:' + imgWpx.toFixed(1) + 'px;height:' + imgHpx.toFixed(1) + 'px;object-fit:' + (sizeMode === 'custom' ? 'fill' : 'contain') + ';display:block">';
+        h += '</div>';
+      });
+      h += '</div>';
+    } else {
+      // Manual mode: items have natural sizes, use gap
+      h += '<div class="grid-row" style="height:' + rowHpx.toFixed(1) + 'px;display:flex;gap:' + (gapH * z).toFixed(1) + 'px;align-items:stretch;">';
+      row.items.forEach(({ img, size }) => {
+        const imgWpx = size.w * z;
+        const imgHpx = size.h * z;
+        let borderCSS = '';
+        const b = getBorder();
+        if (b) {
+          const bp = b.padding * z;
+          const bw = Math.max(b.width * z, 0.5);
+          borderCSS = 'padding:' + bp.toFixed(1) + 'px;background:white;border:' + bw.toFixed(1) + 'px ' + b.style + ' ' + b.color + ';';
+        }
+        h += '<div class="grid-item" style="width:' + imgWpx.toFixed(1) + 'px;' + borderCSS + '">';
+        h += '<img src="' + img.dataUrl + '" style="width:' + imgWpx.toFixed(1) + 'px;height:' + imgHpx.toFixed(1) + 'px;object-fit:' + (sizeMode === 'custom' ? 'fill' : 'contain') + ';display:block">';
+        h += '</div>';
+      });
+      h += '</div>';
+    }
+    // Row gap (except after last row)
+    if (!isLast) {
+      h += '<div style="height:' + gapVPx.toFixed(1) + 'px"></div>';
+    }
+  });
+  h += '</div></div>';
+  el.innerHTML = h;
+}
+
+// ═══════════════════════════════════════
+// EXPORT — build real DOM, capture with html2canvas
+// Key: element must be VISIBLE (not opacity:0) for html2canvas
+// Position off-screen to hide from user
+// ═══════════════════════════════════════
+async function buildExportEl(scale, forceHeightMM) {
+  const { ps, m, gapH, gapV, cellW, rows } = buildLayout();
+  const gapVPx = gapV * scale;
+  const cellPx = cellW * scale;
+  const totalPageH = rows.reduce((s, r) => s + r.cellH, 0) + gapV * (rows.length - 1) + m.top + m.bottom;
+  // Use forced height (for PDF) or natural content height (for long image)
+  const pageHMM = forceHeightMM || totalPageH;
+  const wrapH = pageHMM * scale;
+
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'position:fixed;left:0;top:0;width:' + (ps.w * scale).toFixed(1) + 'px;height:' + wrapH.toFixed(1) + 'px;background:white;z-index:-9999;pointer-events:none;overflow:hidden;';
+
+  const pad = document.createElement('div');
+  pad.style.cssText = 'padding:' + (m.top*scale) + 'px ' + (m.right*scale) + 'px ' + (m.bottom*scale) + 'px ' + (m.left*scale) + 'px;';
+
+  const container = document.createElement('div');
+  container.style.cssText = 'display:flex;flex-direction:column;';
+
+  rows.forEach((row, ri) => {
+    const rowH = row.cellH * scale;
+    const isLast = ri === rows.length - 1;
+
+    const rowDiv = document.createElement('div');
+
+    if (autoLayout) {
+      const isIncomplete = isLast && row.items.length < columns;
+      const useAlign = isIncomplete || alignment === 'justify';
+      let rowCSS = 'height:' + rowH.toFixed(1) + 'px;display:flex;align-items:stretch;';
+      if (useAlign) {
+        if (alignment === 'justify') { rowCSS += 'justify-content:space-between;'; }
+        else { rowCSS += 'justify-content:' + alignment + ';'; }
+      } else {
+        rowCSS += 'gap:0px;';
+      }
+      rowDiv.style.cssText = rowCSS;
+
+      row.items.forEach(({ img, size }) => {
+        const item = document.createElement('div');
+        let itemCSS = 'width:' + cellPx.toFixed(1) + 'px;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0';
+        const b = getBorder();
+        if (b) {
+          const bp = b.padding * scale;
+          const bw = Math.max(b.width * scale, 0.5);
+          itemCSS += ';padding:' + bp.toFixed(1) + 'px;background:white;border:' + bw.toFixed(1) + 'px ' + b.style + ' ' + b.color;
+        }
+        item.style.cssText = itemCSS;
+        const im = document.createElement('img');
+        im.src = img.dataUrl;
+        im.style.cssText = 'width:' + (size.w * scale).toFixed(1) + 'px;height:' + (size.h * scale).toFixed(1) + 'px;object-fit:' + (sizeMode === 'custom' ? 'fill' : 'contain') + ';display:block';
+        item.appendChild(im);
+        rowDiv.appendChild(item);
+      });
+    } else {
+      let rowCSS = 'height:' + rowH.toFixed(1) + 'px;display:flex;align-items:stretch;gap:' + (gapH * scale).toFixed(1) + 'px;';
+      rowDiv.style.cssText = rowCSS;
+
+      row.items.forEach(({ img, size }) => {
+        const item = document.createElement('div');
+        const itemW = size.w * scale;
+        let itemCSS = itemW.toFixed(1) + 'px;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0';
+        const b = getBorder();
+        if (b) {
+          const bp = b.padding * scale;
+          const bw = Math.max(b.width * scale, 0.5);
+          itemCSS += ';padding:' + bp.toFixed(1) + 'px;background:white;border:' + bw.toFixed(1) + 'px ' + b.style + ' ' + b.color;
+        }
+        item.style.cssText = itemCSS;
+        const im = document.createElement('img');
+        im.src = img.dataUrl;
+        im.style.cssText = 'width:' + (size.w * scale).toFixed(1) + 'px;height:' + (size.h * scale).toFixed(1) + 'px;object-fit:' + (sizeMode === 'custom' ? 'fill' : 'contain') + ';display:block';
+        item.appendChild(im);
+        rowDiv.appendChild(item);
+      });
+    }
+
+    container.appendChild(rowDiv);
+    if (!isLast) {
+      const spacer = document.createElement('div');
+      spacer.style.cssText = 'height:' + gapVPx.toFixed(1) + 'px';
+      container.appendChild(spacer);
+    }
+  });
+
+  pad.appendChild(container);
+  wrap.appendChild(pad);
+  document.body.appendChild(wrap);
+
+  // Wait for all images to load
+  await Promise.all([...wrap.querySelectorAll('img')].map(im =>
+    im.complete ? Promise.resolve() : new Promise(r => { im.onload = r; im.onerror = r; })
+  ));
+  await new Promise(r => setTimeout(r, 200));
+
+  return wrap;
+}
+
+async function exportPDF() {
+  if (!images.length) { showToast('请先上传图片'); return; }
+  showLoading(true);
+  try {
+    const ps = PAGE_SIZES[$('pageSize').value];
+    const DPI = 150;
+    const scale = DPI / 25.4;
+    // Force export DOM height to match PDF page height (ps.h mm)
+    // This ensures canvas aspect ratio matches the page, no distortion
+    const el = await buildExportEl(scale, ps.h);
+    const capture = await html2canvas(el, {
+      scale: 1,
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      width: ps.w * scale,
+      height: ps.h * scale,
+      logging: false,
+    });
+    document.body.removeChild(el);
+    const imgData = capture.toDataURL('image/jpeg', 0.95);
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({
+      orientation: ps.w > ps.h ? 'landscape' : 'portrait',
+      unit: 'mm',
+      format: [ps.w, ps.h],
+    });
+    // Canvas now has same aspect ratio as PDF page — no distortion
+    pdf.addImage(imgData, 'JPEG', 0, 0, ps.w, ps.h);
+    pdf.save('layout-' + $('pageSize').value.toLowerCase() + '.pdf');
+    showToast('PDF 导出成功');
+  } catch (e) {
+    console.error('PDF export error:', e);
+    showToast('导出失败: ' + e.message);
+  } finally {
+    showLoading(false);
+  }
+}
+
+async function exportImage() {
+  if (!images.length) { showToast('请先上传图片'); return; }
+  showLoading(true);
+  try {
+    const DPI = 200;
+    const scale = DPI / 25.4;
+    const el = await buildExportEl(scale);
+    const capture = await html2canvas(el, {
+      scale: 1,
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      logging: false,
+    });
+    document.body.removeChild(el);
+    const link = document.createElement('a');
+    link.download = 'layout.png';
+    link.href = capture.toDataURL('image/png');
+    link.click();
+    showToast('长图导出成功');
+  } catch (e) {
+    console.error('Image export error:', e);
+    showToast('导出失败: ' + e.message);
+  } finally {
+    showLoading(false);
+  }
+}
+
+function showLoading(show) { $('loadingOverlay').style.display = show ? '' : 'none'; }
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+}
+
+// ── Init ──
+window.addEventListener('load', () => {
+  calcFitZoom();
+  zoomLevel = fitZoom;
+  $('zoomValue').textContent = '100%';
+  renderPreview();
+});
+window.addEventListener('resize', () => {
+  calcFitZoom();
+  if (zoomLevel === fitZoom) { $('zoomValue').textContent = '100%'; }
+  renderPreview();
+});
+</script>
+</body>
+</html>
